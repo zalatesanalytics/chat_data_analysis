@@ -8,4 +8,4 @@ pdfplumber
 openai
 openpyxl
 watchdog
-
+scikit-learn
