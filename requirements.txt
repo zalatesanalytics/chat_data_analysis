@@ -7,3 +7,5 @@ pyreadstat
 pdfplumber
 openai
 openpyxl
+watchdog
+
