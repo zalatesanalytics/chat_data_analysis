@@ -344,6 +344,38 @@ numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 categorical_cols = df.select_dtypes(exclude=np.number).columns.tolist()
 
 # ==================================================
+# NEW: SIDEBAR CONTROLS FOR CATEGORICAL DESCRIPTIVES & CROSSTABS
+# ==================================================
+st.sidebar.header("Descriptive & Crosstab Options")
+
+selected_numeric_by_group = st.sidebar.multiselect(
+    "Numeric variables for descriptive by categories (mean, std, etc.)",
+    options=numeric_cols,
+)
+
+selected_group_vars = st.sidebar.multiselect(
+    "Grouping categorical variables (e.g., region, sex, education)",
+    options=categorical_cols,
+)
+
+crosstab_var1 = st.sidebar.selectbox(
+    "Crosstab variable 1 (categorical)",
+    options=["(none)"] + categorical_cols,
+    index=0,
+)
+
+crosstab_var2 = st.sidebar.selectbox(
+    "Crosstab variable 2 (categorical)",
+    options=["(none)"] + categorical_cols,
+    index=0,
+)
+
+selected_cats_for_freq = st.sidebar.multiselect(
+    "Categorical variables for frequency plots (bar/pie)",
+    options=categorical_cols,
+)
+
+# ==================================================
 # CUSTOM SCRIPT MODE (STUB + BASIC ANALYSIS)
 # ==================================================
 if analysis_mode == "Use custom analysis script":
@@ -380,7 +412,7 @@ else:
     # ==================================================
     st.subheader("AI Auto-Detected Analysis")
 
-    # -------- HFIAS --------
+    # ------------------ HFIAS ------------------
     if "hfias_score" in df.columns:
         st.markdown("### HFIAS Summary")
         hfias = df["hfias_score"]
@@ -389,7 +421,6 @@ else:
 
         cat_col = "hfias_category" if "hfias_category" in df.columns else None
         if not cat_col:
-            # If category not present (e.g., user data), try to compute using helper
             df = compute_hfias_scores(df, question_cols=None,
                                       score_col="hfias_score",
                                       category_col="hfias_category")
@@ -403,7 +434,7 @@ else:
             "HFIAS distribution:\n" + hfias_counts.to_string()
         )
 
-    # -------- HDDS / WDDS --------
+    # ------------------ HDDS / WDDS ------------------
     for col in ["hdds", "wdds"]:
         if col in df.columns:
             st.markdown(f"### {col.upper()} summary")
@@ -418,7 +449,7 @@ else:
                 f"{col.upper()} distribution summary:\n{df[col].describe().to_string()}"
             )
 
-    # -------- CHILD ANTHROPOMETRY --------
+    # ------------------ CHILD ANTHROPOMETRY ------------------
     if "wfh_zscore" in df.columns:
         st.markdown("### Child Weight-for-Height Z-score")
         st.write(df["wfh_zscore"].describe())
@@ -439,41 +470,113 @@ else:
                 "Malnutrition type frequencies:\n" + mal_counts.to_string()
             )
 
-    # -------- YOUTH DECISION-MAKING --------
-    youth_score_cols = [
-        c for c in df.columns
-        if "decision_score" in c.lower()
-        or "agency_score" in c.lower()
-        or "aspiration_score" in c.lower()
-        or "participation_score" in c.lower()
-        or "youth_decision_score" in c.lower()
-        or "youth_agency_score" in c.lower()
-    ]
-    if youth_score_cols:
-        st.markdown("### Youth Decision-Making & Agency Scores")
-        st.dataframe(df[youth_score_cols].describe().T)
-        narrative_chunks.append(
-            "Youth empowerment/decision-related scores:\n"
-            + df[youth_score_cols].describe().T.to_string()
-        )
-        if "sex" in df.columns:
-            st.markdown("#### Scores by sex")
-            for col in youth_score_cols:
-                grouped = df.groupby("sex")[col].mean()
-                st.write(f"Mean {col} by sex:")
-                st.dataframe(grouped.to_frame())
-                narrative_chunks.append(
-                    f"Mean {col} by sex:\n{grouped.to_string()}"
-                )
+    # ==================================================
+    # NEW: DESCRIPTIVE ANALYSIS BY CATEGORICAL GROUPS + CROSSTABS
+    # ==================================================
+    st.markdown("### Descriptive Analysis by Categorical Variables")
 
-    # -------- GENERAL DESCRIPTIVES --------
+    # Use two columns: left = tables, right = graphs (like “right side” visuals)
+    left_col, right_col = st.columns([2, 1])
+
+    # ----- Numeric by group (mean, std, count, etc.) -----
+    if selected_numeric_by_group and selected_group_vars:
+        with left_col:
+            st.markdown("#### Numeric variables by selected categories")
+
+            grouped = df.groupby(selected_group_vars)[selected_numeric_by_group].agg(
+                ["mean", "std", "count", "min", "max"]
+            )
+
+            # Flatten MultiIndex columns for nicer display
+            grouped.columns = [
+                "_".join([str(c) for c in col if c != ""]).strip("_")
+                for col in grouped.columns.values
+            ]
+            st.dataframe(grouped)
+
+            narrative_chunks.append(
+                f"Numeric descriptives by {selected_group_vars} for {selected_numeric_by_group}:\n"
+                + grouped.to_string()
+            )
+
+        # Simple visual: mean of each numeric by the first group variable
+        primary_group = selected_group_vars[0]
+        with right_col:
+            st.markdown(f"#### Mean by {primary_group}")
+            for num_var in selected_numeric_by_group:
+                fig, ax = plt.subplots()
+                df.groupby(primary_group)[num_var].mean().plot(kind="bar", ax=ax)
+                ax.set_title(f"Mean {num_var} by {primary_group}")
+                ax.set_ylabel(f"{num_var}")
+                ax.set_xlabel(primary_group)
+                st.pyplot(fig)
+
+    # ----- Categorical frequency plots (bar / pie) -----
+    if selected_cats_for_freq:
+        with left_col:
+            st.markdown("#### Frequency tables for selected categoricals")
+            for cat in selected_cats_for_freq:
+                vc = df[cat].value_counts(dropna=False)
+                st.write(f"**{cat}**")
+                st.dataframe(vc.to_frame("count"))
+                narrative_chunks.append(f"Frequencies for {cat}:\n{vc.to_string()}")
+
+        with right_col:
+            st.markdown("#### Categorical plots")
+            for cat in selected_cats_for_freq:
+                vc = df[cat].value_counts(dropna=False)
+                # Bar chart
+                fig, ax = plt.subplots()
+                vc.plot(kind="bar", ax=ax)
+                ax.set_title(f"{cat} (bar chart)")
+                ax.set_ylabel("Count")
+                st.pyplot(fig)
+
+                # Pie chart (optional, for <= 10 categories)
+                if vc.shape[0] <= 10:
+                    fig2, ax2 = plt.subplots()
+                    ax2.pie(vc.values, labels=vc.index.astype(str), autopct="%1.1f%%")
+                    ax2.set_title(f"{cat} (pie chart)")
+                    st.pyplot(fig2)
+
+    # ----- Crosstab between two categorical variables -----
+    if (
+        crosstab_var1 != "(none)"
+        and crosstab_var2 != "(none)"
+        and crosstab_var1 != crosstab_var2
+    ):
+        st.markdown("### Crosstab between two categorical variables")
+        with left_col:
+            xtab = pd.crosstab(df[crosstab_var1], df[crosstab_var2], dropna=False)
+            st.write(f"**Crosstab: {crosstab_var1} × {crosstab_var2} (counts)**")
+            st.dataframe(xtab)
+            narrative_chunks.append(
+                f"Crosstab counts for {crosstab_var1} x {crosstab_var2}:\n{xtab.to_string()}"
+            )
+
+            # Row percentages
+            xtab_pct = xtab.div(xtab.sum(axis=1), axis=0) * 100
+            st.write(f"**Crosstab: {crosstab_var1} × {crosstab_var2} (row %)**")
+            st.dataframe(xtab_pct.round(1))
+
+        with right_col:
+            fig, ax = plt.subplots()
+            xtab_pct.plot(kind="bar", stacked=True, ax=ax)
+            ax.set_title(f"{crosstab_var1} × {crosstab_var2} (row % stacked)")
+            ax.set_ylabel("Percentage")
+            ax.set_xlabel(crosstab_var1)
+            st.pyplot(fig)
+
+    # ==================================================
+    # GENERAL DESCRIPTIVES (still available)
+    # ==================================================
     st.markdown("### General Descriptive Statistics")
     if numeric_cols:
         desc = df[numeric_cols].describe().T
         st.dataframe(desc)
         narrative_chunks.append("Overall numeric descriptives:\n" + desc.to_string())
     if categorical_cols:
-        st.markdown("### Key Categorical Distributions")
+        st.markdown("### Key Categorical Distributions (all)")
         for col in categorical_cols[:10]:  # limit to first 10
             st.write(f"**{col}** value counts:")
             vc = df[col].value_counts(dropna=False)
