@@ -43,18 +43,6 @@ def compute_hfias_scores(
 ):
     """
     Compute HFIAS total score and severity category.
-
-    Parameters
-    ----------
-    df : DataFrame
-        Your dataset.
-    question_cols : list or None
-        List of HFIAS question columns (e.g. ['hfias_q1', ... 'hfias_q9']).
-        If None, will auto-detect columns that start with 'hfias_q'.
-    score_col : str
-        Name of the new total score column.
-    category_col : str
-        Name of the new severity category column.
     """
     if question_cols is None:
         question_cols = [c for c in df.columns if c.lower().startswith("hfias_q")]
@@ -75,17 +63,6 @@ def compute_dietary_diversity_score(
 ):
     """
     Compute dietary diversity score (HDDS or WDDS) as the sum of binary food group indicators.
-
-    Parameters
-    ----------
-    df : DataFrame
-        Your dataset.
-    food_group_cols : list
-        Column names representing food groups (1 if consumed, 0 if not).
-    score_col : str
-        Name of the new score column (e.g. 'hdds', 'wdds').
-    max_score : int or None
-        Optional maximum cap on the score (e.g. 12 for HDDS, 9 for WDDS).
     """
     if not food_group_cols:
         return df
@@ -298,8 +275,8 @@ if data_source == "Use sample (dummy) dataset":
 
 else:
     uploaded_file = st.sidebar.file_uploader(
-        "Upload CSV, Excel, JSON, TSV, Stata, or SPSS file",
-        type=["csv", "xlsx", "xls", "json", "tsv", "txt", "dta", "sav"]
+        "Upload CSV, Excel, JSON, TSV, Stata, SPSS, or PDF file",
+        type=["csv", "xlsx", "xls", "json", "tsv", "txt", "dta", "sav", "pdf"]
     )
     if uploaded_file is not None:
         try:
@@ -317,6 +294,27 @@ else:
             elif name.endswith(".sav"):
                 import pyreadstat
                 df, meta = pyreadstat.read_sav(uploaded_file)
+            elif name.endswith(".pdf"):
+                # Basic PDF support: convert pages to text
+                try:
+                    from pypdf import PdfReader
+                    reader = PdfReader(uploaded_file)
+                    pages = []
+                    for i, page in enumerate(reader.pages):
+                        text = page.extract_text() or ""
+                        pages.append({"page": i + 1, "text": text})
+                    df = pd.DataFrame(pages)
+                    dataset_label = "PDF text (page-level) dataset"
+                    st.info(
+                        "PDF loaded as page-level text. "
+                        "You can generate AI narrative from this text, but numeric analysis may be limited."
+                    )
+                except ImportError:
+                    st.error(
+                        "PDF support requires the 'pypdf' package. "
+                        "Add 'pypdf' to your requirements.txt to enable PDF ingestion."
+                    )
+                    df = None
             else:
                 st.error("Unsupported file format.")
         except Exception as e:
