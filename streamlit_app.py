@@ -100,9 +100,12 @@ def create_dummy_hfias(n=150):
 
     # Use explicit HFIAS calculator
     question_cols = [f"hfias_q{i}" for i in range(1, 10)]
-    df = compute_hfias_scores(df, question_cols=question_cols,
-                              score_col="hfias_score",
-                              category_col="hfias_category")
+    df = compute_hfias_scores(
+        df,
+        question_cols=question_cols,
+        score_col="hfias_score",
+        category_col="hfias_category",
+    )
     return df
 
 
@@ -136,12 +139,12 @@ def create_dummy_child_malnutrition(n=150):
         "sex": np.random.choice(["Male", "Female"], n),
         "weight_kg": np.round(np.random.normal(12, 2.5, n), 1),
         "height_cm": np.round(np.random.normal(90, 8, n), 1),
-        "wfh_zscore": np.round(np.random.normal(-0.5, 1.2, n), 2)
+        "wfh_zscore": np.round(np.random.normal(-0.5, 1.2, n), 2),
     })
     df["malnutrition_type"] = pd.cut(
         df["wfh_zscore"],
         bins=[-10, -3, -2, 100],
-        labels=["Severe wasting", "Moderate wasting", "Normal"]
+        labels=["Severe wasting", "Moderate wasting", "Normal"],
     )
     return df
 
@@ -154,7 +157,7 @@ def create_dummy_consumption_production(n=150):
         "monthly_food_expense": np.round(np.random.normal(120, 40, n), 2),
         "monthly_income": np.round(np.random.normal(300, 100, n), 2),
         "produces_own_food": np.random.choice([0, 1], n),
-        "livestock_count": np.random.poisson(3, n)
+        "livestock_count": np.random.poisson(3, n),
     })
 
     # 12 HDDS food group indicators (binary)
@@ -182,7 +185,7 @@ def create_dummy_youth_decision(n=150):
         "decision_score": np.random.randint(1, 6, n),  # 1–5 Likert
         "agency_score": np.random.randint(1, 6, n),
         "aspiration_score": np.random.randint(1, 6, n),
-        "participation_score": np.random.randint(1, 6, n)
+        "participation_score": np.random.randint(1, 6, n),
     })
     df["received_training"] = np.random.choice([0, 1], n)
     return df
@@ -205,8 +208,10 @@ def create_dummy_integrated(n=200):
     for i in range(1, 10):
         df[f"hfias_q{i}"] = np.random.randint(0, 4, n)
     df = compute_hfias_scores(
-        df, question_cols=[f"hfias_q{i}" for i in range(1, 10)],
-        score_col="hfias_score", category_col="hfias_category"
+        df,
+        question_cols=[f"hfias_q{i}" for i in range(1, 10)],
+        score_col="hfias_score",
+        category_col="hfias_category",
     )
 
     # HDDS groups (12)
@@ -235,7 +240,7 @@ st.sidebar.header("Data Source")
 
 data_source = st.sidebar.radio(
     "Choose data source:",
-    ["Use sample (dummy) dataset", "Upload your own dataset"]
+    ["Use sample (dummy) dataset", "Upload your own dataset"],
 )
 
 df = None
@@ -250,8 +255,8 @@ if data_source == "Use sample (dummy) dataset":
             "Child malnutrition / anthropometry",
             "Food consumption & production",
             "Youth development & decision-making",
-            "Integrated multi-topic dataset"
-        ]
+            "Integrated multi-topic dataset",
+        ],
     )
 
     if sample_choice == "HFIAS household food insecurity":
@@ -276,7 +281,7 @@ if data_source == "Use sample (dummy) dataset":
 else:
     uploaded_file = st.sidebar.file_uploader(
         "Upload CSV, Excel, JSON, TSV, Stata, SPSS, or PDF file",
-        type=["csv", "xlsx", "xls", "json", "tsv", "txt", "dta", "sav", "pdf"]
+        type=["csv", "xlsx", "xls", "json", "tsv", "txt", "dta", "sav", "pdf"],
     )
     if uploaded_file is not None:
         try:
@@ -298,6 +303,7 @@ else:
                 # PDF support: convert pages to text using pdfplumber
                 try:
                     import pdfplumber
+
                     pages = []
                     with pdfplumber.open(uploaded_file) as pdf:
                         for i, page in enumerate(pdf.pages):
@@ -335,7 +341,7 @@ st.dataframe(df.head())
 st.sidebar.header("Analysis Mode")
 analysis_mode = st.sidebar.radio(
     "Choose analysis mode",
-    ["AI auto-detect analysis", "Use custom analysis script"]
+    ["AI auto-detect analysis", "Use custom analysis script"],
 )
 
 narrative_chunks = []  # for AI narrative later
@@ -360,12 +366,12 @@ selected_group_vars = st.sidebar.multiselect(
 
 crosstab_var1 = st.sidebar.selectbox(
     "Crosstab variable 1 (categorical)",
-    options["(none)"] + categorical_cols if categorical_cols else ["(none)"],
+    ["(none)"] + categorical_cols if categorical_cols else ["(none)"],
 )
 
 crosstab_var2 = st.sidebar.selectbox(
     "Crosstab variable 2 (categorical)",
-    options["(none)"] + categorical_cols if categorical_cols else ["(none)"],
+    ["(none)"] + categorical_cols if categorical_cols else ["(none)"],
 )
 
 selected_cats_for_freq = st.sidebar.multiselect(
@@ -381,20 +387,22 @@ if analysis_mode == "Use custom analysis script":
 
     script_type = st.selectbox(
         "Type of script you want to reference",
-        ["Stata (.do)", "SPSS (.sps)", "Python code (text)"]
+        ["Stata (.do)", "SPSS (.sps)", "Python code (text)"],
     )
 
     script_text = st.text_area(
         "Paste your analysis script here (for now, used as guidance for AI + summaries)",
         height=200,
-        placeholder="Paste your .do / .sps / Python logic here..."
+        placeholder="Paste your .do / .sps / Python logic here...",
     )
 
     st.markdown("### Basic descriptive analysis based on your dataset")
     if numeric_cols:
         desc = df[numeric_cols].describe().T
         st.dataframe(desc)
-        narrative_chunks.append("Descriptive statistics (custom script mode):\n" + desc.to_string())
+        narrative_chunks.append(
+            "Descriptive statistics (custom script mode):\n" + desc.to_string()
+        )
     else:
         st.warning("No numeric columns detected for descriptive statistics.")
 
@@ -419,25 +427,26 @@ else:
 
         cat_col = "hfias_category" if "hfias_category" in df.columns else None
         if not cat_col:
-            df = compute_hfias_scores(df, question_cols=None,
-                                      score_col="hfias_score",
-                                      category_col="hfias_category")
+            df = compute_hfias_scores(
+                df,
+                question_cols=None,
+                score_col="hfias_score",
+                category_col="hfias_category",
+            )
             cat_col = "hfias_category"
 
         # Counts and mean HFIAS score by category
-        st.write("HFIAS severity distribution (value counts and mean score by category):")
+        st.write(
+            "HFIAS severity distribution (value counts and mean score by category):"
+        )
         hfias_summary = (
-            df.groupby(cat_col)["hfias_score"]
-            .agg(count="size", mean="mean")
-            .reset_index()
+            df.groupby(cat_col)["hfias_score"].agg(count="size", mean="mean").reset_index()
         )
         hfias_summary["mean"] = hfias_summary["mean"].round(2)
         st.dataframe(hfias_summary)
 
         # Bar chart of counts
-        st.bar_chart(
-            hfias_summary.set_index(cat_col)["count"]
-        )
+        st.bar_chart(hfias_summary.set_index(cat_col)["count"])
 
         narrative_chunks.append(
             "HFIAS distribution (counts and mean score by category):\n"
@@ -456,7 +465,8 @@ else:
             ax.set_ylabel("Frequency")
             st.pyplot(fig)
             narrative_chunks.append(
-                f"{col.upper()} distribution summary:\n{df[col].describe().to_string()}"
+                f"{col.upper()} distribution summary:\n"
+                + df[col].describe().to_string()
             )
 
     # ------------------ CHILD ANTHROPOMETRY ------------------
@@ -496,6 +506,7 @@ else:
                 ["mean", "std", "count", "min", "max"]
             )
 
+            # Flatten MultiIndex columns
             grouped.columns = [
                 "_".join([str(c) for c in col if c != ""]).strip("_")
                 for col in grouped.columns.values
@@ -514,7 +525,7 @@ else:
                 fig, ax = plt.subplots()
                 df.groupby(primary_group)[num_var].mean().plot(kind="bar", ax=ax)
                 ax.set_title(f"Mean {num_var} by {primary_group}")
-                ax.set_ylabel(f"{num_var}")
+                ax.set_ylabel(num_var)
                 ax.set_xlabel(primary_group)
                 st.pyplot(fig)
 
@@ -526,21 +537,30 @@ else:
                 vc = df[cat].value_counts(dropna=False)
                 st.write(f"**{cat}**")
                 st.dataframe(vc.to_frame("count"))
-                narrative_chunks.append(f"Frequencies for {cat}:\n{vc.to_string()}")
+                narrative_chunks.append(
+                    f"Frequencies for {cat}:\n" + vc.to_string()
+                )
 
         with right_col:
             st.markdown("#### Categorical plots")
             for cat in selected_cats_for_freq:
                 vc = df[cat].value_counts(dropna=False)
+
+                # Bar chart
                 fig, ax = plt.subplots()
                 vc.plot(kind="bar", ax=ax)
                 ax.set_title(f"{cat} (bar chart)")
                 ax.set_ylabel("Count")
                 st.pyplot(fig)
 
+                # Pie chart (for <= 10 categories)
                 if vc.shape[0] <= 10:
                     fig2, ax2 = plt.subplots()
-                    ax2.pie(vc.values, labels=vc.index.astype(str), autopct="%1.1f%%")
+                    ax2.pie(
+                        vc.values,
+                        labels=vc.index.astype(str),
+                        autopct="%1.1f%%",
+                    )
                     ax2.set_title(f"{cat} (pie chart)")
                     st.pyplot(fig2)
 
@@ -552,11 +572,14 @@ else:
     ):
         st.markdown("### Crosstab between two categorical variables")
         with left_col:
-            xtab = pd.crosstab(df[crosstab_var1], df[crosstab_var2], dropna=False)
+            xtab = pd.crosstab(
+                df[crosstab_var1], df[crosstab_var2], dropna=False
+            )
             st.write(f"**Crosstab: {crosstab_var1} × {crosstab_var2} (counts)**")
             st.dataframe(xtab)
             narrative_chunks.append(
-                f"Crosstab counts for {crosstab_var1} x {crosstab_var2}:\n{xtab.to_string()}"
+                f"Crosstab counts for {crosstab_var1} x {crosstab_var2}:\n"
+                + xtab.to_string()
             )
 
             xtab_pct = xtab.div(xtab.sum(axis=1), axis=0) * 100
@@ -572,7 +595,7 @@ else:
             st.pyplot(fig)
 
     # ==================================================
-    # GENERAL DESCRIPTIVES (still available)
+    # GENERAL DESCRIPTIVES
     # ==================================================
     st.markdown("### General Descriptive Statistics")
     if numeric_cols:
@@ -585,7 +608,9 @@ else:
             st.write(f"**{col}** value counts:")
             vc = df[col].value_counts(dropna=False)
             st.dataframe(vc.to_frame("count"))
-            narrative_chunks.append(f"Value counts for {col}:\n{vc.to_string()}")
+            narrative_chunks.append(
+                f"Value counts for {col}:\n" + vc.to_string()
+            )
 
 
 # ==================================================
@@ -595,7 +620,9 @@ st.markdown("---")
 st.subheader("AI Narrative Report")
 
 if not openai.api_key:
-    st.warning("OpenAI API key not set in Streamlit secrets. Narrative report not available.")
+    st.warning(
+        "OpenAI API key not set in Streamlit secrets. Narrative report not available."
+    )
 else:
     user_prompt = st.text_area(
         "Optional: refine what you want the AI to focus on",
@@ -603,12 +630,14 @@ else:
             "Summarize the dataset, describe key findings on food security, "
             "dietary diversity, youth decision-making, and income/consumption where applicable. "
             "Highlight any gender or regional differences and potential program implications."
-        )
+        ),
     )
 
     if st.button("Generate AI Narrative"):
         context_sample = df.head(10).to_dict()
-        combined_narrative = "\n\n".join(narrative_chunks) if narrative_chunks else "No prior summaries."
+        combined_narrative = (
+            "\n\n".join(narrative_chunks) if narrative_chunks else "No prior summaries."
+        )
 
         prompt = (
             "You are an expert data analyst working on food security, nutrition, and youth development.\n"
@@ -643,7 +672,7 @@ st.download_button(
     "Download current dataset as CSV",
     data=csv_bytes,
     file_name="dataset_processed.csv",
-    mime="text/csv"
+    mime="text/csv",
 )
 
 pdf_buffer = io.BytesIO()
@@ -662,5 +691,5 @@ st.download_button(
     "Download basic PDF chart report",
     data=pdf_buffer,
     file_name="basic_report.pdf",
-    mime="application/pdf"
+    mime="application/pdf",
 )
