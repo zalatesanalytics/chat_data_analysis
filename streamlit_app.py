@@ -1,4 +1,4 @@
-# streamlit_app.py
+# streamlit_app.py (or app.py)
 
 import io
 import numpy as np
@@ -295,24 +295,24 @@ else:
                 import pyreadstat
                 df, meta = pyreadstat.read_sav(uploaded_file)
             elif name.endswith(".pdf"):
-                # Basic PDF support: convert pages to text
+                # PDF support: convert pages to text using pdfplumber
                 try:
-                    from pypdf import PdfReader
-                    reader = PdfReader(uploaded_file)
+                    import pdfplumber
                     pages = []
-                    for i, page in enumerate(reader.pages):
-                        text = page.extract_text() or ""
-                        pages.append({"page": i + 1, "text": text})
+                    with pdfplumber.open(uploaded_file) as pdf:
+                        for i, page in enumerate(pdf.pages):
+                            text = page.extract_text() or ""
+                            pages.append({"page": i + 1, "text": text})
                     df = pd.DataFrame(pages)
                     dataset_label = "PDF text (page-level) dataset"
                     st.info(
                         "PDF loaded as page-level text. "
                         "You can generate AI narrative from this text, but numeric analysis may be limited."
                     )
-                except ImportError:
+                except Exception as e:
                     st.error(
-                        "PDF support requires the 'pypdf' package. "
-                        "Add 'pypdf' to your requirements.txt to enable PDF ingestion."
+                        f"Error reading PDF with pdfplumber: {e}. "
+                        "Check that 'pdfplumber' is in your requirements.txt."
                     )
                     df = None
             else:
@@ -344,7 +344,7 @@ numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
 categorical_cols = df.select_dtypes(exclude=np.number).columns.tolist()
 
 # ==================================================
-# NEW: SIDEBAR CONTROLS FOR CATEGORICAL DESCRIPTIVES & CROSSTABS
+# SIDEBAR CONTROLS FOR CATEGORICAL DESCRIPTIVES & CROSSTABS
 # ==================================================
 st.sidebar.header("Descriptive & Crosstab Options")
 
@@ -360,14 +360,12 @@ selected_group_vars = st.sidebar.multiselect(
 
 crosstab_var1 = st.sidebar.selectbox(
     "Crosstab variable 1 (categorical)",
-    options=["(none)"] + categorical_cols,
-    index=0,
+    options["(none)"] + categorical_cols if categorical_cols else ["(none)"],
 )
 
 crosstab_var2 = st.sidebar.selectbox(
     "Crosstab variable 2 (categorical)",
-    options=["(none)"] + categorical_cols,
-    index=0,
+    options["(none)"] + categorical_cols if categorical_cols else ["(none)"],
 )
 
 selected_cats_for_freq = st.sidebar.multiselect(
@@ -426,12 +424,24 @@ else:
                                       category_col="hfias_category")
             cat_col = "hfias_category"
 
-        st.write("HFIAS severity distribution:")
-        hfias_counts = df[cat_col].value_counts(dropna=False)
-        st.bar_chart(hfias_counts)
+        # Counts and mean HFIAS score by category
+        st.write("HFIAS severity distribution (value counts and mean score by category):")
+        hfias_summary = (
+            df.groupby(cat_col)["hfias_score"]
+            .agg(count="size", mean="mean")
+            .reset_index()
+        )
+        hfias_summary["mean"] = hfias_summary["mean"].round(2)
+        st.dataframe(hfias_summary)
+
+        # Bar chart of counts
+        st.bar_chart(
+            hfias_summary.set_index(cat_col)["count"]
+        )
 
         narrative_chunks.append(
-            "HFIAS distribution:\n" + hfias_counts.to_string()
+            "HFIAS distribution (counts and mean score by category):\n"
+            + hfias_summary.to_string(index=False)
         )
 
     # ------------------ HDDS / WDDS ------------------
@@ -471,11 +481,10 @@ else:
             )
 
     # ==================================================
-    # NEW: DESCRIPTIVE ANALYSIS BY CATEGORICAL GROUPS + CROSSTABS
+    # DESCRIPTIVE ANALYSIS BY CATEGORICAL GROUPS + CROSSTABS
     # ==================================================
     st.markdown("### Descriptive Analysis by Categorical Variables")
 
-    # Use two columns: left = tables, right = graphs (like “right side” visuals)
     left_col, right_col = st.columns([2, 1])
 
     # ----- Numeric by group (mean, std, count, etc.) -----
@@ -487,7 +496,6 @@ else:
                 ["mean", "std", "count", "min", "max"]
             )
 
-            # Flatten MultiIndex columns for nicer display
             grouped.columns = [
                 "_".join([str(c) for c in col if c != ""]).strip("_")
                 for col in grouped.columns.values
@@ -499,7 +507,6 @@ else:
                 + grouped.to_string()
             )
 
-        # Simple visual: mean of each numeric by the first group variable
         primary_group = selected_group_vars[0]
         with right_col:
             st.markdown(f"#### Mean by {primary_group}")
@@ -525,14 +532,12 @@ else:
             st.markdown("#### Categorical plots")
             for cat in selected_cats_for_freq:
                 vc = df[cat].value_counts(dropna=False)
-                # Bar chart
                 fig, ax = plt.subplots()
                 vc.plot(kind="bar", ax=ax)
                 ax.set_title(f"{cat} (bar chart)")
                 ax.set_ylabel("Count")
                 st.pyplot(fig)
 
-                # Pie chart (optional, for <= 10 categories)
                 if vc.shape[0] <= 10:
                     fig2, ax2 = plt.subplots()
                     ax2.pie(vc.values, labels=vc.index.astype(str), autopct="%1.1f%%")
@@ -554,7 +559,6 @@ else:
                 f"Crosstab counts for {crosstab_var1} x {crosstab_var2}:\n{xtab.to_string()}"
             )
 
-            # Row percentages
             xtab_pct = xtab.div(xtab.sum(axis=1), axis=0) * 100
             st.write(f"**Crosstab: {crosstab_var1} × {crosstab_var2} (row %)**")
             st.dataframe(xtab_pct.round(1))
@@ -577,7 +581,7 @@ else:
         narrative_chunks.append("Overall numeric descriptives:\n" + desc.to_string())
     if categorical_cols:
         st.markdown("### Key Categorical Distributions (all)")
-        for col in categorical_cols[:10]:  # limit to first 10
+        for col in categorical_cols[:10]:
             st.write(f"**{col}** value counts:")
             vc = df[col].value_counts(dropna=False)
             st.dataframe(vc.to_frame("count"))
@@ -644,8 +648,7 @@ st.download_button(
 
 pdf_buffer = io.BytesIO()
 with PdfPages(pdf_buffer) as pdf:
-    # Numeric distributions
-    for col in numeric_cols[:12]:  # limit to 12 columns for PDF
+    for col in numeric_cols[:12]:
         fig, ax = plt.subplots()
         ax.hist(df[col].dropna(), bins=12)
         ax.set_title(f"Distribution of {col}")
