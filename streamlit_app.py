@@ -81,7 +81,7 @@ def compute_dietary_diversity_score(
 # DUMMY DATASET GENERATORS (NOW USING THE SCORERS)
 # ==================================================
 
-def create_dummy_hfias(n=150):
+def create_dummy_hfias(n=500):
     np.random.seed(42)
     df = pd.DataFrame({
         "hhid": range(1, n + 1),
@@ -109,7 +109,7 @@ def create_dummy_hfias(n=150):
     return df
 
 
-def create_dummy_wdds(n=150):
+def create_dummy_wdds(n=500):
     np.random.seed(43)
     df = pd.DataFrame({
         "id": range(1, n + 1),
@@ -131,7 +131,7 @@ def create_dummy_wdds(n=150):
     return df
 
 
-def create_dummy_child_malnutrition(n=150):
+def create_dummy_child_malnutrition(n=500):
     np.random.seed(44)
     df = pd.DataFrame({
         "child_id": range(1, n + 1),
@@ -149,7 +149,7 @@ def create_dummy_child_malnutrition(n=150):
     return df
 
 
-def create_dummy_consumption_production(n=150):
+def create_dummy_consumption_production(n=500):
     np.random.seed(45)
     df = pd.DataFrame({
         "hhid": range(1, n + 1),
@@ -172,7 +172,7 @@ def create_dummy_consumption_production(n=150):
     return df
 
 
-def create_dummy_youth_decision(n=150):
+def create_dummy_youth_decision(n=500):
     np.random.seed(46)
     df = pd.DataFrame({
         "youth_id": range(1, n + 1),
@@ -191,7 +191,7 @@ def create_dummy_youth_decision(n=150):
     return df
 
 
-def create_dummy_integrated(n=200):
+def create_dummy_integrated(n=500):
     np.random.seed(47)
     df = pd.DataFrame({
         "hhid": range(1, n + 1),
@@ -435,13 +435,15 @@ else:
             )
             cat_col = "hfias_category"
 
-        # Counts and mean HFIAS score by category
+        # Counts, mean and percent HFIAS score by category
         st.write(
-            "HFIAS severity distribution (value counts and mean score by category):"
+            "HFIAS severity distribution (count, mean score, and % of total by category):"
         )
+        total_n = len(df)
         hfias_summary = (
             df.groupby(cat_col)["hfias_score"].agg(count="size", mean="mean").reset_index()
         )
+        hfias_summary["percent"] = (hfias_summary["count"] / total_n * 100).round(1)
         hfias_summary["mean"] = hfias_summary["mean"].round(2)
         st.dataframe(hfias_summary)
 
@@ -449,7 +451,7 @@ else:
         st.bar_chart(hfias_summary.set_index(cat_col)["count"])
 
         narrative_chunks.append(
-            "HFIAS distribution (counts and mean score by category):\n"
+            "HFIAS distribution (count, mean score, and % of total by category):\n"
             + hfias_summary.to_string(index=False)
         )
 
@@ -485,13 +487,19 @@ else:
         if "malnutrition_type" in df.columns:
             st.write("Malnutrition categories:")
             mal_counts = df["malnutrition_type"].value_counts(dropna=False)
+            # Add percent per category from total
+            mal_tbl = pd.DataFrame({
+                "count": mal_counts,
+                "percent": (mal_counts / mal_counts.sum() * 100).round(1),
+            })
+            st.dataframe(mal_tbl)
             st.bar_chart(mal_counts)
             narrative_chunks.append(
-                "Malnutrition type frequencies:\n" + mal_counts.to_string()
+                "Malnutrition type frequencies (count and %):\n" + mal_tbl.to_string()
             )
 
     # ==================================================
-    # DESCRIPTIVE ANALYSIS BY CATEGORICAL GROUPS + CROSSTABS
+    # DESCRIPTIVE ANALYSIS BY CATEGORICAL VARIABLES + CROSSTABS
     # ==================================================
     st.markdown("### Descriptive Analysis by Categorical Variables")
 
@@ -502,20 +510,33 @@ else:
         with left_col:
             st.markdown("#### Numeric variables by selected categories")
 
-            grouped = df.groupby(selected_group_vars)[selected_numeric_by_group].agg(
+            # group_count and group_percent (based on total N)
+            total_n = len(df)
+            group_counts = df.groupby(selected_group_vars).size().rename("group_count")
+            group_perc = (group_counts / total_n * 100).rename("group_percent")
+
+            grouped_stats = df.groupby(selected_group_vars)[selected_numeric_by_group].agg(
                 ["mean", "std", "count", "min", "max"]
             )
 
-            # Flatten MultiIndex columns
-            grouped.columns = [
-                "_".join([str(c) for c in col if c != ""]).strip("_")
-                for col in grouped.columns.values
-            ]
+            grouped = pd.concat([grouped_stats, group_counts, group_perc], axis=1)
+
+            # Flatten MultiIndex columns (numeric stats), keep group_count/percent clean
+            new_cols = []
+            for col in grouped.columns:
+                if isinstance(col, tuple):
+                    new_cols.append(
+                        "_".join([str(c) for c in col if c != ""]).strip("_")
+                    )
+                else:
+                    new_cols.append(str(col))
+            grouped.columns = new_cols
+
             st.dataframe(grouped)
 
             narrative_chunks.append(
-                f"Numeric descriptives by {selected_group_vars} for {selected_numeric_by_group}:\n"
-                + grouped.to_string()
+                f"Numeric descriptives by {selected_group_vars} for {selected_numeric_by_group} "
+                f"(including group_count and group_percent):\n{grouped.to_string()}"
             )
 
         primary_group = selected_group_vars[0]
@@ -533,12 +554,18 @@ else:
     if selected_cats_for_freq:
         with left_col:
             st.markdown("#### Frequency tables for selected categoricals")
+            total_n = len(df)
             for cat in selected_cats_for_freq:
                 vc = df[cat].value_counts(dropna=False)
+                freq_tbl = pd.DataFrame({
+                    "count": vc,
+                    "percent": (vc / total_n * 100).round(1),
+                })
                 st.write(f"**{cat}**")
-                st.dataframe(vc.to_frame("count"))
+                st.dataframe(freq_tbl)
                 narrative_chunks.append(
-                    f"Frequencies for {cat}:\n" + vc.to_string()
+                    f"Frequencies for {cat} (count and % of total):\n"
+                    + freq_tbl.to_string()
                 )
 
         with right_col:
@@ -604,12 +631,18 @@ else:
         narrative_chunks.append("Overall numeric descriptives:\n" + desc.to_string())
     if categorical_cols:
         st.markdown("### Key Categorical Distributions (all)")
+        total_n = len(df)
         for col in categorical_cols[:10]:
-            st.write(f"**{col}** value counts:")
+            st.write(f"**{col}** value counts and % of total:")
             vc = df[col].value_counts(dropna=False)
-            st.dataframe(vc.to_frame("count"))
+            freq_tbl = pd.DataFrame({
+                "count": vc,
+                "percent": (vc / total_n * 100).round(1),
+            })
+            st.dataframe(freq_tbl)
             narrative_chunks.append(
-                f"Value counts for {col}:\n" + vc.to_string()
+                f"Value counts for {col} (count and %):\n"
+                + freq_tbl.to_string()
             )
 
 
