@@ -17,8 +17,11 @@ st.title("AI Food Security, Nutrition & Youth Development Analysis Assistant")
 
 # ---------------- OPENAI CONFIG -------------------
 # Load key from .streamlit/secrets.toml
+# Load key from .streamlit/secrets.toml
 openai.api_key = st.secrets.get("OPENAI_API_KEY", "")
 
+if not openai.api_key:
+    st.warning("OpenAI API key not set in Streamlit secrets.")
 if not openai.api_key:
     st.warning("OpenAI API key not set in Streamlit secrets.")
 # ==================================================
