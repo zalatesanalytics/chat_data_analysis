@@ -16,8 +16,11 @@ st.set_page_config(page_title="AI Food & Youth Analysis Assistant", layout="wide
 st.title("AI Food Security, Nutrition & Youth Development Analysis Assistant")
 
 # ---------------- OPENAI CONFIG -------------------
+# Load key from .streamlit/secrets.toml
 openai.api_key = st.secrets.get("OPENAI_API_KEY", "")
 
+if not openai.api_key:
+    st.warning("OpenAI API key not set in Streamlit secrets.")
 # ==================================================
 # SCORING HELPERS: HFIAS / HDDS / WDDS
 # ==================================================
