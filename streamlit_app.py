@@ -9,6 +9,7 @@ import streamlit as st
 from matplotlib.backends.backend_pdf import PdfPages
 
 import openai
+import requests  # for KoboToolbox API calls
 
 # ---------------- STREAMLIT CONFIG ----------------
 st.set_page_config(page_title="AI Food & Youth Analysis Assistant", layout="wide")
@@ -234,18 +235,19 @@ def create_dummy_integrated(n=500):
 
 
 # ==================================================
-# SIDEBAR: CHOOSE SAMPLE OR UPLOAD
+# SIDEBAR: CHOOSE SAMPLE / UPLOAD / KOBO
 # ==================================================
 st.sidebar.header("Data Source")
 
 data_source = st.sidebar.radio(
     "Choose data source:",
-    ["Use sample (dummy) dataset", "Upload your own dataset"],
+    ["Use sample (dummy) dataset", "Upload your own dataset", "Load from KoboToolbox"],
 )
 
 df = None
 dataset_label = None
 
+# ---------- 1) SAMPLE (DUMMY) DATA ----------
 if data_source == "Use sample (dummy) dataset":
     sample_choice = st.sidebar.selectbox(
         "Select sample dataset",
@@ -278,7 +280,8 @@ if data_source == "Use sample (dummy) dataset":
         df = create_dummy_integrated()
         dataset_label = "Dummy integrated dataset"
 
-else:
+# ---------- 2) UPLOAD LOCAL FILE ----------
+elif data_source == "Upload your own dataset":
     uploaded_file = st.sidebar.file_uploader(
         "Upload CSV, Excel, JSON, TSV, Stata, SPSS, or PDF file",
         type=["csv", "xlsx", "xls", "json", "tsv", "txt", "dta", "sav", "pdf"],
@@ -326,8 +329,86 @@ else:
         except Exception as e:
             st.error(f"Error loading file: {e}")
 
+# ---------- 3) LOAD FROM KOBOTOOLBOX ----------
+elif data_source == "Load from KoboToolbox":
+    st.sidebar.markdown("### KoboToolbox Connection")
+
+    # Default to EU server + your known asset UID
+    kobo_server = st.sidebar.text_input(
+        "Kobo server URL",
+        value="https://eu.kobotoolbox.org",
+        help="Example: https://kf.kobotoolbox.org or https://eu.kobotoolbox.org",
+    )
+
+    # Try to read from secrets first; if empty, allow user to paste
+    default_kobo_token = st.secrets.get("KOBO_TOKEN", "")
+    kobo_token = st.sidebar.text_input(
+        "Kobo API Token",
+        type="password",
+        value=default_kobo_token,
+        help="Paste your Kobo API token here (Profile → API token). "
+             "For deployment, set KOBO_TOKEN in Streamlit secrets instead of hardcoding.",
+    )
+
+    kobo_asset_uid = st.sidebar.text_input(
+        "Form / Asset UID",
+        value="aRcHyjoYEn6fCkHuEX4QYm",  # from your URL
+        help="The UID of your Kobo form (e.g., aRcHyjoYEn6fCkHuEX4QYm).",
+    )
+
+    load_kobo = st.sidebar.button("Load data from Kobo")
+
+    if load_kobo:
+        if not (kobo_server and kobo_token and kobo_asset_uid):
+            st.error("Please provide server URL, API token, and asset UID.")
+        else:
+            try:
+                # Ensure server URL has no trailing slash
+                kobo_server = kobo_server.rstrip("/")
+                url = f"{kobo_server}/api/v2/assets/{kobo_asset_uid}/data/?format=json"
+
+                headers = {
+                    "Authorization": f"Token {kobo_token}",
+                }
+
+                st.info("Requesting data from KoboToolbox...")
+                resp = requests.get(url, headers=headers)
+
+                if resp.status_code != 200:
+                    st.error(
+                        f"Error fetching data from Kobo (status {resp.status_code}): "
+                        f"{resp.text[:400]}"
+                    )
+                else:
+                    data_json = resp.json()
+
+                    # Kobo v2 data usually under 'results'
+                    if "results" in data_json:
+                        records = data_json["results"]
+                    else:
+                        records = data_json
+
+                    if not records:
+                        st.warning("No submissions found for this asset.")
+                    else:
+                        df = pd.DataFrame.from_records(records)
+                        dataset_label = f"Kobo data (asset {kobo_asset_uid})"
+                        st.success("Data loaded successfully from KoboToolbox.")
+
+                        # Optional: drop some Kobo system columns if present
+                        system_cols = [c for c in df.columns if c.startswith("_")]
+                        if system_cols:
+                            st.info(
+                                f"Dropping Kobo system columns from analysis: {system_cols}"
+                            )
+                            df = df.drop(columns=system_cols)
+
+            except Exception as e:
+                st.error(f"Error loading data from KoboToolbox: {e}")
+
+# ---------- Final check ----------
 if df is None:
-    st.info("Select a sample dataset or upload your own file to begin.")
+    st.info("Select a sample dataset, upload a file, or load from KoboToolbox to begin.")
     st.stop()
 
 # Show basic info
