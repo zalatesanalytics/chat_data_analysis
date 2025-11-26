@@ -1,4 +1,4 @@
-# streamlit_app.py (or app.py)
+# streamlit_app.py
 
 import io
 import numpy as np
@@ -183,9 +183,11 @@ def create_dummy_youth_decision(n=500):
         "employment_status": np.random.choice(
             ["Unemployed", "Employed", "Self-employed", "Student"], n
         ),
-        "decision_score": np.random.randint(1, 6, n),  # 1–5 Likert
+        "decision_power_score": np.random.randint(1, 6, n),
         "agency_score": np.random.randint(1, 6, n),
-        "aspiration_score": np.random.randint(1, 6, n),
+        "hope_future_score": np.random.randint(1, 6, n),
+        "financial_literacy_score": np.random.randint(1, 6, n),
+        "empathy_score": np.random.randint(1, 6, n),
         "participation_score": np.random.randint(1, 6, n),
     })
     df["received_training"] = np.random.choice([0, 1], n)
@@ -340,7 +342,6 @@ elif data_source == "Load from KoboToolbox":
         help="Example: https://kf.kobotoolbox.org or https://eu.kobotoolbox.org",
     )
 
-    # Try to read from secrets first; if empty, allow user to paste
     default_kobo_token = st.secrets.get("KOBO_TOKEN", "")
     kobo_token = st.sidebar.text_input(
         "Kobo API Token",
@@ -352,7 +353,7 @@ elif data_source == "Load from KoboToolbox":
 
     kobo_asset_uid = st.sidebar.text_input(
         "Form / Asset UID",
-        value="aRcHyjoYEn6fCkHuEX4QYm",  # from your URL
+        value="aRcHyjoYEn6fCkHuEX4QYm",
         help="The UID of your Kobo form (e.g., aRcHyjoYEn6fCkHuEX4QYm).",
     )
 
@@ -363,7 +364,6 @@ elif data_source == "Load from KoboToolbox":
             st.error("Please provide server URL, API token, and asset UID.")
         else:
             try:
-                # Ensure server URL has no trailing slash
                 kobo_server = kobo_server.rstrip("/")
                 url = f"{kobo_server}/api/v2/assets/{kobo_asset_uid}/data/?format=json"
 
@@ -382,7 +382,6 @@ elif data_source == "Load from KoboToolbox":
                 else:
                     data_json = resp.json()
 
-                    # Kobo v2 data usually under 'results'
                     if "results" in data_json:
                         records = data_json["results"]
                     else:
@@ -395,7 +394,7 @@ elif data_source == "Load from KoboToolbox":
                         dataset_label = f"Kobo data (asset {kobo_asset_uid})"
                         st.success("Data loaded successfully from KoboToolbox.")
 
-                        # Optional: drop some Kobo system columns if present
+                        # Optional: drop Kobo system columns (starting with "_")
                         system_cols = [c for c in df.columns if c.startswith("_")]
                         if system_cols:
                             st.info(
@@ -416,6 +415,15 @@ st.success(f"Dataset loaded: {dataset_label or 'Uploaded dataset'}")
 st.write(f"Shape: {df.shape[0]} rows × {df.shape[1]} columns")
 st.dataframe(df.head())
 
+# Quick overview, especially useful for Kobo data
+numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
+categorical_cols = df.select_dtypes(exclude=np.number).columns.tolist()
+
+if dataset_label and "Kobo" in dataset_label:
+    st.markdown("### Kobo Dataset Variable Overview")
+    st.write(f"Numeric columns ({len(numeric_cols)}):", numeric_cols)
+    st.write(f"Categorical/text columns ({len(categorical_cols)}):", categorical_cols)
+
 # ==================================================
 # ANALYSIS MODE: AI AUTO vs SCRIPT
 # ==================================================
@@ -426,9 +434,6 @@ analysis_mode = st.sidebar.radio(
 )
 
 narrative_chunks = []  # for AI narrative later
-
-numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-categorical_cols = df.select_dtypes(exclude=np.number).columns.tolist()
 
 # ==================================================
 # SIDEBAR CONTROLS FOR CATEGORICAL DESCRIPTIVES & CROSSTABS
@@ -516,7 +521,6 @@ else:
             )
             cat_col = "hfias_category"
 
-        # Counts, mean and percent HFIAS score by category
         st.write(
             "HFIAS severity distribution (count, mean score, and % of total by category):"
         )
@@ -528,7 +532,6 @@ else:
         hfias_summary["mean"] = hfias_summary["mean"].round(2)
         st.dataframe(hfias_summary)
 
-        # Bar chart of counts
         st.bar_chart(hfias_summary.set_index(cat_col)["count"])
 
         narrative_chunks.append(
@@ -568,7 +571,6 @@ else:
         if "malnutrition_type" in df.columns:
             st.write("Malnutrition categories:")
             mal_counts = df["malnutrition_type"].value_counts(dropna=False)
-            # Add percent per category from total
             mal_tbl = pd.DataFrame({
                 "count": mal_counts,
                 "percent": (mal_counts / mal_counts.sum() * 100).round(1),
@@ -578,6 +580,120 @@ else:
             narrative_chunks.append(
                 "Malnutrition type frequencies (count and %):\n" + mal_tbl.to_string()
             )
+
+    # ------------------ YOUTH DEVELOPMENT & EMPOWERMENT ------------------
+    st.markdown("## Youth Development & Empowerment Analysis")
+
+    # Keywords for youth numeric indicators
+    youth_num_keywords = [
+        "decision", "power", "agency", "aspiration", "hope", "future",
+        "financial", "finance", "literacy", "saving", "savings",
+        "budget", "empathy", "empath", "participation", "voice", "leadership"
+    ]
+
+    # Keywords for youth categorical indicators
+    youth_cat_keywords = [
+        "youth", "training", "program", "cohort", "group",
+        "employment", "employed", "self_emp", "business",
+        "mentor", "club", "volunteer"
+    ]
+
+    youth_numeric_cols = [
+        c for c in numeric_cols
+        if any(k in c.lower() for k in youth_num_keywords)
+    ]
+
+    youth_categorical_cols = [
+        c for c in categorical_cols
+        if any(k in c.lower() for k in youth_num_keywords + youth_cat_keywords)
+    ]
+
+    if youth_numeric_cols or youth_categorical_cols:
+        st.success(
+            f"Detected youth-relevant variables: "
+            f"{len(youth_numeric_cols)} numeric, {len(youth_categorical_cols)} categorical."
+        )
+
+        # ----- Numeric youth indicators -----
+        if youth_numeric_cols:
+            st.markdown("### Youth numeric indicators (decision power, hope, financial literacy, empathy, etc.)")
+            youth_desc = df[youth_numeric_cols].describe().T
+            st.dataframe(youth_desc)
+            narrative_chunks.append(
+                "Youth numeric indicators (decision/hope/financial/empathy) descriptives:\n"
+                + youth_desc.to_string()
+            )
+
+            # Histograms for up to 8 youth numeric vars
+            for col in youth_numeric_cols[:8]:
+                fig, ax = plt.subplots()
+                ax.hist(df[col].dropna(), bins=10)
+                ax.set_title(f"Distribution of {col}")
+                ax.set_xlabel(col)
+                ax.set_ylabel("Frequency")
+                st.pyplot(fig)
+
+        # ----- Youth indicators by sex -----
+        if youth_numeric_cols and "sex" in df.columns:
+            st.markdown("#### Youth indicators by sex")
+            for col in youth_numeric_cols:
+                grouped = df.groupby("sex")[col].mean()
+                st.write(f"Mean {col} by sex:")
+                st.dataframe(grouped.to_frame())
+                narrative_chunks.append(
+                    f"Mean {col} by sex:\n{grouped.to_string()}"
+                )
+
+        # ----- Youth indicators by region -----
+        if youth_numeric_cols and "region" in df.columns:
+            st.markdown("#### Youth indicators by region")
+            for col in youth_numeric_cols:
+                grouped_r = df.groupby("region")[col].mean()
+                st.write(f"Mean {col} by region:")
+                st.dataframe(grouped_r.to_frame())
+                narrative_chunks.append(
+                    f"Mean {col} by region:\n{grouped_r.to_string()}"
+                )
+
+        # ----- Categorical youth variables -----
+        if youth_categorical_cols:
+            st.markdown("### Youth categorical variables (programs, groups, status, etc.)")
+            total_n = len(df)
+            for col in youth_categorical_cols:
+                vc = df[col].value_counts(dropna=False)
+                freq_tbl = pd.DataFrame({
+                    "count": vc,
+                    "percent": (vc / total_n * 100).round(1),
+                })
+                st.write(f"**{col}** (count and % of total):")
+                st.dataframe(freq_tbl)
+                narrative_chunks.append(
+                    f"Youth categorical {col} (count and %):\n"
+                    + freq_tbl.to_string()
+                )
+
+                # Bar chart
+                fig, ax = plt.subplots()
+                vc.plot(kind="bar", ax=ax)
+                ax.set_title(f"{col} (bar chart)")
+                ax.set_ylabel("Count")
+                st.pyplot(fig)
+
+                # Pie chart if categories not too many
+                if vc.shape[0] <= 10:
+                    fig2, ax2 = plt.subplots()
+                    ax2.pie(
+                        vc.values,
+                        labels=vc.index.astype(str),
+                        autopct="%1.1f%%",
+                    )
+                    ax2.set_title(f"{col} (pie chart)")
+                    st.pyplot(fig2)
+    else:
+        st.info(
+            "No youth-specific variables detected by name. "
+            "You can still use the general descriptive and crosstab options in the sidebar."
+        )
 
     # ==================================================
     # DESCRIPTIVE ANALYSIS BY CATEGORICAL VARIABLES + CROSSTABS
@@ -591,7 +707,6 @@ else:
         with left_col:
             st.markdown("#### Numeric variables by selected categories")
 
-            # group_count and group_percent (based on total N)
             total_n = len(df)
             group_counts = df.groupby(selected_group_vars).size().rename("group_count")
             group_perc = (group_counts / total_n * 100).rename("group_percent")
@@ -602,7 +717,6 @@ else:
 
             grouped = pd.concat([grouped_stats, group_counts, group_perc], axis=1)
 
-            # Flatten MultiIndex columns (numeric stats), keep group_count/percent clean
             new_cols = []
             for col in grouped.columns:
                 if isinstance(col, tuple):
@@ -654,14 +768,12 @@ else:
             for cat in selected_cats_for_freq:
                 vc = df[cat].value_counts(dropna=False)
 
-                # Bar chart
                 fig, ax = plt.subplots()
                 vc.plot(kind="bar", ax=ax)
                 ax.set_title(f"{cat} (bar chart)")
                 ax.set_ylabel("Count")
                 st.pyplot(fig)
 
-                # Pie chart (for <= 10 categories)
                 if vc.shape[0] <= 10:
                     fig2, ax2 = plt.subplots()
                     ax2.pie(
@@ -742,7 +854,8 @@ else:
         "Optional: refine what you want the AI to focus on",
         value=(
             "Summarize the dataset, describe key findings on food security, "
-            "dietary diversity, youth decision-making, and income/consumption where applicable. "
+            "dietary diversity, youth decision-making and agency, hope for the future, "
+            "financial literacy, empathy, and income/consumption where applicable. "
             "Highlight any gender or regional differences and potential program implications."
         ),
     )
